@@ -390,7 +390,7 @@ final class PlayerDetailViewModel: NSObject, ObservableObject {
     }
 
     init(item: MediaItem,
-         engine: PlayerEngine = DefaultPlayerEngine(),
+         engine: PlayerEngine = PlayerDetailViewModel.makeDefaultEngine(),
          metadataService: MetadataServiceProtocol = MetadataService()) {
         self.item = item
         self.engine = engine
@@ -418,6 +418,14 @@ final class PlayerDetailViewModel: NSObject, ObservableObject {
 
     var playbackRate: Float {
         engineRate
+    }
+
+    private static func makeDefaultEngine() -> PlayerEngine {
+#if canImport(FFmpegKit)
+        return FFmpegPlayerEngine()
+#else
+        return DefaultPlayerEngine()
+#endif
     }
 
     @MainActor
