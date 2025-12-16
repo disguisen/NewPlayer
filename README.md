@@ -1,6 +1,7 @@
 # NewPlayer
 
-面向 iPhone/Apple TV 的多媒体播放器雏形，参考 Infuse 8 Pro 的体验目标。仓库提供了基于 SwiftUI + 可插拔播放内核的模块化骨架，便于后续接入 AVPlayer/FFmpeg、网络协议和元数据服务。
+面向 iPhone/Apple TV 的多媒体播放器雏形，参考 Infuse 8 Pro 的体验目标。仓库提供了基于 SwiftUI + 可插拔播放内核的模块化骨架，便于
+后续接入 AVPlayer/FFmpeg、网络协议和元数据服务。
 
 ## 模块设计
 - **Common**：媒体模型、字幕/音轨描述、错误类型等通用定义。
@@ -9,6 +10,10 @@
 - **Library**：媒体库服务、内存存储、示例元数据抓取逻辑（可换成 TMDb/TVDb 等）。
 - **Networking**：简单的网络客户端接口，后续可接入 `URLSession`/`Alamofire` 以及 SMB/WebDAV/UPnP 等协议客户端。
 - **App**：SwiftUI 入口与基础页面（首页、媒体库、设置、详情）。
+
+## 近期更新
+- 新增示例媒体库数据，App 首次启动即可看到电影/剧集条目。
+- 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 增加模拟进度循环，便于 UI 预览。
 
 ## 下一步接入建议
 1. 在 `DefaultPlayerEngine` 中对接 AVPlayer 或自编译的 FFmpeg + VideoToolbox，驱动真实播放、缓冲与事件回调。
