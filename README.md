@@ -6,14 +6,14 @@
 ## 模块设计
 - **Common**：媒体模型、扫描源定义（本地/SMB/WebDAV/FTP/UPnP）、字幕/音轨描述、错误类型等通用定义。
 - **Core**：播放引擎协议 (`PlayerEngine`) 和播放状态结构体，便于替换 AVPlayer/FFmpeg 实现。
-- **Player**：默认播放引擎的占位实现 `DefaultPlayerEngine`，演示如何加载媒体、切换音轨/字幕、变速播放等；可选链接 GitHub 发布的 FFmpegKit 二进制以启用 `FFmpegPlayerEngine`，获得更广格式支持。
+- **Player**：使用 `AVPlayer` 的默认播放引擎 `DefaultPlayerEngine`，支持真实播放、缓冲进度与媒体选择事件；可选链接 GitHub 发布的 FFmpegKit 二进制以启用 `FFmpegPlayerEngine`，或在缺少 AVFoundation 时通过 typealias 自动切换，获得更广格式支持。
 - **Library**：媒体库服务、扫描器与 SQLite 持久化存储（不可用时自动回退内存存储）、示例元数据抓取逻辑（可换成 TMDb/TVDb 等）。
 - **Networking**：简单的网络客户端接口，后续可接入 `URLSession`/`Alamofire` 以及 SMB/WebDAV/UPnP 等协议客户端。
 - **App**：SwiftUI 入口与基础页面（首页、媒体库、设置、详情）。
 
 ## 近期更新
 - 新增示例媒体库数据，App 首次启动即可看到电影/剧集条目。
-- 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 增加模拟进度循环，便于 UI 预览。
+- 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 已对接 AVPlayer，实时推送播放与缓冲进度（在缺少 AVFoundation 时会回退到 FFmpegKit 或占位实现）。
 - 媒体库扫描支持本地文件夹与 SMB/WebDAV/FTP/UPnP 远程源（当前为模拟目录列表），并将扫描结果写入 SQLite（在沙盒不可用时回退内存）。
 - `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示；新增重试 + 回退策略和 UI 层的缓存状态展示与刷新入口。
 
@@ -30,8 +30,8 @@
   - 优先使用首选提供方（TMDb/TVDb），若失败则回退到次选提供方；全部失败时返回原始条目并在 UI 中提示错误。
 
 ## 下一步接入建议
-1. 在 `DefaultPlayerEngine` 中对接 AVPlayer 或自编译的 FFmpeg + VideoToolbox，驱动真实播放、缓冲与事件回调；或直接切换到 `FFmpegPlayerEngine` 以利用 FFmpegKit 的格式覆盖。
-2. 在 SwiftUI 界面加入更多播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
+1. 在 SwiftUI 界面加入更多播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
+2. 若使用自编译的 FFmpeg + VideoToolbox，可在 `DefaultPlayerEngine` 中扩展自定义管线，或直接把 `PlayerEngine` 的实例化切换为 `FFmpegPlayerEngine` 以使用 FFmpegKit 的格式覆盖。
 
 ## 运行说明
 本仓库以 Swift Package 形式组织，可直接导入 Xcode 并设置 iOS 16+ 目标设备。`App/` 目录提供了 SwiftUI 入口样例，作为后续集成到 Xcode 工程或 `.xcodeproj` 的起点。
