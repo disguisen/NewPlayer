@@ -68,7 +68,7 @@ public final class MetadataService: MetadataServiceProtocol {
         for provider in providerOrder {
             do {
                 let enriched = try await performWithRetry(maxRetries: configuration.maxRetries, baseDelay: configuration.baseBackoff) {
-                    try await fetchFromProvider(provider, for: item)
+                    try await self.fetchFromProvider(provider, for: item)
                 }
 
                 if let enriched { return enriched }

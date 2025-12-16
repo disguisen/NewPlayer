@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public protocol NetworkClientProtocol {
     func get(path: String) async throws -> Data

@@ -51,7 +51,7 @@ public actor LibraryStorage {
     public init(persistence: LibraryPersisting? = nil) {
         if let persistence {
             self.persistence = persistence
-        } else if let sqlite = try? SQLiteLibraryPersistence() {
+        } else if let sqlite = Self.makeSQLitePersistence() {
             self.persistence = sqlite
         } else {
             self.persistence = InMemoryLibraryPersistence()
@@ -132,5 +132,13 @@ public actor LibraryStorage {
             cache[item.id] = item
         }
         return samples
+    }
+
+    private static func makeSQLitePersistence() -> LibraryPersisting? {
+#if canImport(SQLite3)
+        return try? SQLiteLibraryPersistence()
+#else
+        return nil
+#endif
     }
 }

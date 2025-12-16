@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#endif
 import Common
 
 public protocol LibraryPersisting {
@@ -8,6 +10,7 @@ public protocol LibraryPersisting {
     func updatePlaybackPosition(itemID: UUID, position: TimeInterval, date: Date) throws
 }
 
+#if canImport(SQLite3)
 public final class SQLiteLibraryPersistence: LibraryPersisting {
     private let db: OpaquePointer?
     private let encoder = JSONEncoder()
@@ -131,6 +134,7 @@ public final class SQLiteLibraryPersistence: LibraryPersisting {
         return base.appendingPathComponent("NewPlayer/library.sqlite")
     }
 }
+#endif
 
 public enum PersistenceError: Error {
     case connectionFailed
