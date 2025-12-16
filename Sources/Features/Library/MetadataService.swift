@@ -4,6 +4,7 @@ import Networking
 
 public protocol MetadataServiceProtocol {
     func fetchMetadata(for item: MediaItem) async throws -> MediaItem
+    func cacheStatus(for imageURL: URL?) -> MetadataCacheStatus
 }
 
 public enum MetadataProvider: String {
@@ -11,17 +12,39 @@ public enum MetadataProvider: String {
     case tvdb
 }
 
+public enum MetadataError: LocalizedError {
+    case unavailableProvider
+    case retryExhausted(last: Error)
+    case allProvidersFailed([Error])
+
+    public var errorDescription: String? {
+        switch self {
+        case .unavailableProvider: return "未配置可用的元数据提供方"
+        case .retryExhausted(let last): return "请求多次失败：\(last.localizedDescription)"
+        case .allProvidersFailed(let errors):
+            let combined = errors.map { $0.localizedDescription }.joined(separator: "; ")
+            return combined.isEmpty ? "元数据提供方不可用" : "全部提供方失败：\(combined)"
+        }
+    }
+}
+
 public struct MetadataConfiguration {
     public var tmdbAPIKey: String?
     public var tvdbToken: String?
     public var preferredProvider: MetadataProvider
+    public var maxRetries: Int
+    public var baseBackoff: TimeInterval
 
     public init(tmdbAPIKey: String? = ProcessInfo.processInfo.environment["TMDB_API_KEY"],
                 tvdbToken: String? = ProcessInfo.processInfo.environment["TVDB_TOKEN"],
-                preferredProvider: MetadataProvider = .tmdb) {
+                preferredProvider: MetadataProvider = .tmdb,
+                maxRetries: Int = 2,
+                baseBackoff: TimeInterval = 0.4) {
         self.tmdbAPIKey = tmdbAPIKey
         self.tvdbToken = tvdbToken
         self.preferredProvider = preferredProvider
+        self.maxRetries = maxRetries
+        self.baseBackoff = baseBackoff
     }
 }
 
@@ -41,15 +64,29 @@ public final class MetadataService: MetadataServiceProtocol {
     public func fetchMetadata(for item: MediaItem) async throws -> MediaItem {
         let providerOrder: [MetadataProvider] = configuration.preferredProvider == .tmdb ? [.tmdb, .tvdb] : [.tvdb, .tmdb]
 
-        var updated = item
+        var errors: [Error] = []
         for provider in providerOrder {
-            if let enriched = try await fetchFromProvider(provider, for: item) {
-                updated = enriched
-                break
+            do {
+                let enriched = try await performWithRetry(maxRetries: configuration.maxRetries, baseDelay: configuration.baseBackoff) {
+                    try await fetchFromProvider(provider, for: item)
+                }
+
+                if let enriched { return enriched }
+            } catch {
+                errors.append(error)
+                continue
             }
         }
 
-        return updated
+        if errors.isEmpty {
+            return item
+        }
+
+        throw MetadataError.allProvidersFailed(errors)
+    }
+
+    public func cacheStatus(for imageURL: URL?) -> MetadataCacheStatus {
+        imageCache.status(for: imageURL)
     }
 
     private func fetchFromProvider(_ provider: MetadataProvider, for item: MediaItem) async throws -> MediaItem? {
@@ -122,9 +159,33 @@ public final class MetadataService: MetadataServiceProtocol {
 
         return updated
     }
+
+    private func performWithRetry<T>(maxRetries: Int, baseDelay: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        var attempt = 0
+        var lastError: Error?
+
+        while attempt <= maxRetries {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                attempt += 1
+                if attempt > maxRetries { break }
+                let delay = baseDelay * pow(2, Double(attempt - 1))
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+
+        throw MetadataError.retryExhausted(last: lastError ?? MetadataError.unavailableProvider)
+    }
 }
 
 // MARK: - Cache
+
+public enum MetadataCacheStatus: Equatable {
+    case cached(URL)
+    case missing
+}
 
 public final class MetadataImageCache {
     private let fileManager: FileManager
@@ -152,6 +213,17 @@ public final class MetadataImageCache {
 
         try data.write(to: fileURL, options: .atomic)
         return fileURL
+    }
+
+    public func status(for imageURL: URL?) -> MetadataCacheStatus {
+        guard let imageURL else { return .missing }
+
+        if imageURL.isFileURL {
+            return fileManager.fileExists(atPath: imageURL.path) ? .cached(imageURL) : .missing
+        }
+
+        let cachedURL = cacheDirectory.appendingPathComponent(cacheFileName(for: imageURL))
+        return fileManager.fileExists(atPath: cachedURL.path) ? .cached(cachedURL) : .missing
     }
 
     private func cacheFileName(for url: URL) -> String {

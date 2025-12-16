@@ -1,6 +1,7 @@
 import SwiftUI
 import Common
 import Player
+import Library
 
 struct HomeView: View {
     let items: [MediaItem]
@@ -74,6 +75,7 @@ struct PlayerDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+            metadataSection
             playbackSection
             trackSelectors
             Spacer()
@@ -91,6 +93,36 @@ struct PlayerDetailView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var metadataSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("海报: \(viewModel.cacheSnapshot.poster.displayText)", systemImage: "photo")
+                Label("背景: \(viewModel.cacheSnapshot.backdrop.displayText)", systemImage: "photo.fill.on.rectangle.fill")
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+
+            if let metadataMessage = viewModel.metadataMessage {
+                Text(metadataMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.blue)
+            }
+
+            Button {
+                viewModel.refreshMetadata()
+            } label: {
+                if viewModel.isRefreshingMetadata {
+                    ProgressView().progressViewStyle(.circular)
+                } else {
+                    Label("刷新元数据", systemImage: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.bordered)
+            .tint(.blue)
+            .disabled(viewModel.isRefreshingMetadata)
         }
     }
 
@@ -177,16 +209,24 @@ struct PlayerDetailView: View {
 final class PlayerDetailViewModel: NSObject, ObservableObject {
     @Published var state: PlaybackState
     @Published var errorMessage: String?
-    let item: MediaItem
+    @Published var metadataMessage: String?
+    @Published var isRefreshingMetadata = false
+    @Published var cacheSnapshot: MetadataCacheSnapshot
+    @Published var item: MediaItem
     let availableRates: [Float] = [0.75, 1.0, 1.25, 1.5, 2.0]
 
     private let engine: PlayerEngine
+    private let metadataService: MetadataServiceProtocol
     private var engineRate: Float = 1.0
 
-    init(item: MediaItem, engine: PlayerEngine = DefaultPlayerEngine()) {
+    init(item: MediaItem,
+         engine: PlayerEngine = DefaultPlayerEngine(),
+         metadataService: MetadataServiceProtocol = MetadataService()) {
         self.item = item
         self.engine = engine
+        self.metadataService = metadataService
         self.state = PlaybackState()
+        self.cacheSnapshot = MetadataCacheSnapshot(poster: metadataService.cacheStatus(for: item.posterURL), backdrop: metadataService.cacheStatus(for: item.backdropURL))
         super.init()
         self.engine.delegate = self
         Task { await load() }
@@ -250,6 +290,32 @@ final class PlayerDetailViewModel: NSObject, ObservableObject {
         Task { await engine.selectSubtitle(subtitle) }
     }
 
+    func refreshMetadata() {
+        Task {
+            await MainActor.run {
+                isRefreshingMetadata = true
+                metadataMessage = nil
+            }
+
+            do {
+                let enriched = try await metadataService.fetchMetadata(for: item)
+                await MainActor.run {
+                    self.item = enriched
+                    self.cacheSnapshot = MetadataCacheSnapshot(poster: metadataService.cacheStatus(for: enriched.posterURL), backdrop: metadataService.cacheStatus(for: enriched.backdropURL))
+                    self.metadataMessage = "已刷新元数据"
+                }
+            } catch {
+                await MainActor.run {
+                    self.metadataMessage = error.localizedDescription
+                }
+            }
+
+            await MainActor.run {
+                isRefreshingMetadata = false
+            }
+        }
+    }
+
     private func format(time: TimeInterval) -> String {
         guard !time.isNaN && !time.isInfinite else { return "--:--" }
         let seconds = Int(time)
@@ -273,6 +339,20 @@ extension PlayerDetailViewModel: PlayerEngineDelegate {
     func playerDidFail(_ error: PlayerError) {
         Task { @MainActor in
             self.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct MetadataCacheSnapshot: Equatable {
+    var poster: MetadataCacheStatus
+    var backdrop: MetadataCacheStatus
+}
+
+private extension MetadataCacheStatus {
+    var displayText: String {
+        switch self {
+        case .cached(_): return "已缓存"
+        case .missing: return "未缓存"
         }
     }
 }

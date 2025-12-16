@@ -15,7 +15,7 @@
 - 新增示例媒体库数据，App 首次启动即可看到电影/剧集条目。
 - 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 增加模拟进度循环，便于 UI 预览。
 - 媒体库扫描支持本地文件夹与 SMB/WebDAV/FTP/UPnP 远程源（当前为模拟目录列表），并将扫描结果写入 SQLite（在沙盒不可用时回退内存）。
-- `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示。
+- `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示；新增重试 + 回退策略和 UI 层的缓存状态展示与刷新入口。
 
 ## 元数据与图片缓存
 - **凭据配置**：在运行时设置环境变量 `TMDB_API_KEY`、`TVDB_TOKEN`，并可通过 `MetadataConfiguration.preferredProvider` 指定优先顺序（默认 TMDb→TVDb，若缺少凭据则自动跳过）。
@@ -24,12 +24,14 @@
   - TMDb：按需下载 poster/backdrop，并将远端 URL 的 hash 生成本地文件名存入磁盘缓存目录（默认 `Caches/MetadataImages/`）。
   - TVDb：直接下载返回的海报/背景链接，同样写入缓存目录；重复请求会复用已有文件。
 - **网络客户端**：`Networking.NetworkClient` 支持基于 URL 的 GET 请求和 Header 注入，可替换为 `URLSession`/`Alamofire` 实现。
-- **缓存命中**：再次获取相同图片时将优先读取缓存文件，减少带宽并提升离线可用性，可据此在 UI 层展示本地缓存的艺术图。
+- **缓存命中**：再次获取相同图片时将优先读取缓存文件，减少带宽并提升离线可用性，可据此在 UI 层展示本地缓存的艺术图。SwiftUI 播放详情页提供缓存状态标签与“刷新元数据”按钮。
+- **错误兜底与重试**：
+  - 通过 `MetadataConfiguration` 设置最大重试次数和指数退避基准间隔，网络/解码失败会自动重试。
+  - 优先使用首选提供方（TMDb/TVDb），若失败则回退到次选提供方；全部失败时返回原始条目并在 UI 中提示错误。
 
 ## 下一步接入建议
 1. 在 `DefaultPlayerEngine` 中对接 AVPlayer 或自编译的 FFmpeg + VideoToolbox，驱动真实播放、缓冲与事件回调；或直接切换到 `FFmpegPlayerEngine` 以利用 FFmpegKit 的格式覆盖。
-2. 针对 `MetadataService` 增补错误兜底、重试/回退策略，并在 UI 层展示缓存状态与刷新入口。
-3. 在 SwiftUI 界面加入播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
+2. 在 SwiftUI 界面加入更多播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
 
 ## 运行说明
 本仓库以 Swift Package 形式组织，可直接导入 Xcode 并设置 iOS 16+ 目标设备。`App/` 目录提供了 SwiftUI 入口样例，作为后续集成到 Xcode 工程或 `.xcodeproj` 的起点。
