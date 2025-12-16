@@ -28,7 +28,10 @@ let package = Package(
         .target(
             name: "Library",
             dependencies: ["Core", "Common", "Networking"],
-            path: "Sources/Features/Library"
+            path: "Sources/Features/Library",
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         ),
         .target(
             name: "Player",

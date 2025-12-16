@@ -6,6 +6,36 @@ public enum MediaType: String, Codable, CaseIterable {
     case music
 }
 
+public enum MediaSourceScheme: String, Codable, CaseIterable {
+    case local
+    case smb
+    case webdav
+    case ftp
+    case upnp
+}
+
+public struct MediaScanSource: Codable, Hashable {
+    public var scheme: MediaSourceScheme
+    public var url: URL
+    public var username: String?
+    public var password: String?
+    public var displayName: String
+
+    public init(
+        scheme: MediaSourceScheme,
+        url: URL,
+        username: String? = nil,
+        password: String? = nil,
+        displayName: String
+    ) {
+        self.scheme = scheme
+        self.url = url
+        self.username = username
+        self.password = password
+        self.displayName = displayName
+    }
+}
+
 public struct MediaItem: Identifiable, Codable, Hashable {
     public let id: UUID
     public var title: String
