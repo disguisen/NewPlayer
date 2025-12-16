@@ -15,12 +15,12 @@
 - 新增示例媒体库数据，App 首次启动即可看到电影/剧集条目。
 - 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 增加模拟进度循环，便于 UI 预览。
 - 媒体库扫描支持本地文件夹与 SMB/WebDAV/FTP/UPnP 远程源（当前为模拟目录列表），并将扫描结果写入 SQLite（在沙盒不可用时回退内存）。
+- `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示。
 
 ## 下一步接入建议
 1. 在 `DefaultPlayerEngine` 中对接 AVPlayer 或自编译的 FFmpeg + VideoToolbox，驱动真实播放、缓冲与事件回调；或直接切换到 `FFmpegPlayerEngine` 以利用 FFmpegKit 的格式覆盖。
-2. 将 `NetworkClient` 替换为实际的 HTTP 客户端，并补充授权、错误处理与缓存策略。
-3. 在 `MetadataService` 中串接 TMDb/TVDb 等 API，并为海报/背景图实现磁盘缓存。
-4. 在 SwiftUI 界面加入播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
+2. 针对 `MetadataService` 增补错误兜底、重试/回退策略，并在 UI 层展示缓存状态与刷新入口。
+3. 在 SwiftUI 界面加入播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
 
 ## 运行说明
 本仓库以 Swift Package 形式组织，可直接导入 Xcode 并设置 iOS 16+ 目标设备。`App/` 目录提供了 SwiftUI 入口样例，作为后续集成到 Xcode 工程或 `.xcodeproj` 的起点。
