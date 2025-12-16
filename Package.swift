@@ -54,7 +54,8 @@ targets.append(
 let package = Package(
     name: "NewPlayer",
     platforms: [
-        .iOS(.v16)
+        .iOS(.v16),
+        .macOS(.v10_15)
     ],
     products: [
         .library(
