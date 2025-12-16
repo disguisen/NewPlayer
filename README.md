@@ -13,11 +13,14 @@
 
 ## 近期更新
 - 新增示例媒体库数据，App 首次启动即可看到电影/剧集条目。
-- 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 已对接 AVPlayer，实时推送播放与缓冲进度（在缺少 AVFoundation 时会回退到 FFmpegKit 或占位实现）。
 - 媒体库扫描支持本地文件夹与 SMB/WebDAV/FTP/UPnP 远程源（当前为模拟目录列表），并将扫描结果写入 SQLite（在沙盒不可用时回退内存）。
 - `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示；新增重试 + 回退策略和 UI 层的缓存状态展示与刷新入口。
-- SwiftUI 播放页补充了双击/滑动手势、画中画入口、远程控制中心激活提示，以及字幕字号/颜色/描边/背景透明度调节，便于快速验证真实播放时的交互体验。
-
+- `DefaultPlayerEngine` 对接 AVPlayer，实时推送播放与缓冲进度；缺少 AVFoundation 时自动回退到 FFmpegKit 或占位实现，保持接口一致。
+- SwiftUI 播放页强化：
+  - 播放/暂停、快进/快退、拖拽进度、倍速、音轨、字幕切换等基础控件。
+  - 双击跳转、左右/上下滑动调节进度/亮度/音量，便于快速试用真实播放时的手势体验。
+  - 画中画开关、远程控制中心激活提示，支持 Now Playing 控制以及 PiP 与 AVPlayer/FFmpegKit 的联动。
+  - 字幕字号/颜色/描边/背景透明度调节，便于验证字幕样式偏好；提供缓存状态标签与“刷新元数据”入口。
 ## 元数据与图片缓存
 - **凭据配置**：在运行时设置环境变量 `TMDB_API_KEY`、`TVDB_TOKEN`，并可通过 `MetadataConfiguration.preferredProvider` 指定优先顺序（默认 TMDb→TVDb，若缺少凭据则自动跳过）。
 - **抓取流程**：`MetadataService` 依据媒体类型调用 TMDb 或 TVDb 搜索接口，填充原始标题、剧情简介、上映年份等字段；若未匹配到结果，保留原条目不修改。
