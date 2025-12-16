@@ -18,6 +18,27 @@ public protocol PlayerEngineDelegate: AnyObject {
     func playerDidFail(_ error: PlayerError)
 }
 
+#if canImport(AVFoundation)
+import AVFoundation
+
+public protocol AVPlayerBackedEngine: PlayerEngine {
+    var avPlayer: AVPlayer? { get }
+}
+#else
+public protocol AVPlayerBackedEngine: PlayerEngine {}
+#endif
+
+public protocol PictureInPictureSupporting: PlayerEngine {
+    var isPictureInPictureActive: Bool { get }
+    func startPictureInPicture() async
+    func stopPictureInPicture() async
+}
+
+public protocol RemoteCommandSupporting: PlayerEngine {
+    func configureRemoteCommandsIfNeeded()
+    func teardownRemoteCommands()
+}
+
 public struct PlaybackState: Equatable {
     public var isPlaying: Bool
     public var currentTime: TimeInterval

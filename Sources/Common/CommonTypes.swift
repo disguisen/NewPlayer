@@ -101,6 +101,23 @@ public struct Subtitle: Identifiable, Codable, Hashable {
     }
 }
 
+public struct SubtitleStylePreferences: Codable, Equatable, Hashable {
+    public var fontSize: Double
+    public var textColorHex: String
+    public var outlineWidth: Double
+    public var backgroundOpacity: Double
+
+    public init(fontSize: Double = 18,
+                textColorHex: String = "#FFFFFF",
+                outlineWidth: Double = 1.5,
+                backgroundOpacity: Double = 0.35) {
+        self.fontSize = fontSize
+        self.textColorHex = textColorHex
+        self.outlineWidth = outlineWidth
+        self.backgroundOpacity = backgroundOpacity
+    }
+}
+
 public struct AudioTrack: Identifiable, Codable, Hashable {
     public let id: UUID
     public var languageCode: String

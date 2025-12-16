@@ -1,6 +1,8 @@
 #if canImport(AVFoundation)
 import Foundation
 import AVFoundation
+import AVKit
+import MediaPlayer
 import Core
 import Common
 
@@ -8,7 +10,7 @@ import Common
 /// periodically emits position/buffer updates, and mirrors audio/subtitle
 /// selections to media selection groups. When AVFoundation is unavailable,
 /// the typealiases at the bottom of the file provide fallbacks.
-public final class DefaultPlayerEngine: NSObject, PlayerEngine {
+public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEngine {
     public weak var delegate: PlayerEngineDelegate?
 
     private var state = PlaybackState()
@@ -20,6 +22,9 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
     private var endObserver: NSObjectProtocol?
     private var playbackRate: Float = 1.0
     private var currentItem: MediaItem?
+    private var pipController: AVPictureInPictureController?
+    private var pipLayer: AVPlayerLayer?
+    private var remoteCommandsConfigured = false
 
     public override init() {
         super.init()
@@ -43,6 +48,8 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
             let player = AVPlayer(playerItem: playerItem)
             player.actionAtItemEnd = .pause
             self.player = player
+            self.preparePictureInPicture()
+            self.configureRemoteCommandsIfNeeded()
 
             self.observePlayerItem()
             self.observePlaybackTime()
@@ -58,9 +65,12 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
                 selectedSubtitle: item.subtitles.first(where: { $0.isDefault }) ?? item.subtitles.first
             )
             self.applyMediaSelections()
+            self.updateNowPlayingInfo()
             self.notifyStateUpdate()
         }
     }
+
+    public var avPlayer: AVPlayer? { player }
 
     public func play() async {
         await MainActor.run {
@@ -76,6 +86,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
         await MainActor.run {
             state.isPlaying = false
             player?.pause()
+            updateNowPlayingInfo()
             notifyStateUpdate()
         }
     }
@@ -97,6 +108,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
             if state.isPlaying {
                 player?.rate = playbackRate
             }
+            updateNowPlayingInfo()
             notifyStateUpdate()
         }
     }
@@ -155,6 +167,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
             state.currentTime = CMTimeGetSeconds(time)
             if state.isPlaying {
                 notifyStateUpdate()
+                updateNowPlayingInfo()
             }
         }
     }
@@ -168,6 +181,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
         ) { [weak self] _ in
             guard let self else { return }
             state.isPlaying = false
+            updateNowPlayingInfo()
             notifyStateUpdate()
         }
     }
@@ -225,6 +239,10 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
             NotificationCenter.default.removeObserver(endObserver)
         }
         endObserver = nil
+        pipController?.stopPictureInPicture()
+        pipController = nil
+        pipLayer = nil
+        teardownRemoteCommands()
         player?.pause()
         player = nil
         playerItem = nil
@@ -234,6 +252,105 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine {
     @MainActor
     private func notifyStateUpdate() {
         delegate?.playerDidUpdate(state: state)
+    }
+}
+
+// MARK: - Picture in Picture
+
+extension DefaultPlayerEngine: AVPictureInPictureControllerDelegate, PictureInPictureSupporting {
+    public var isPictureInPictureActive: Bool { pipController?.isPictureInPictureActive ?? false }
+
+    public func startPictureInPicture() async {
+        await MainActor.run {
+            pipController?.startPictureInPicture()
+        }
+    }
+
+    public func stopPictureInPicture() async {
+        await MainActor.run {
+            pipController?.stopPictureInPicture()
+        }
+    }
+
+    @MainActor
+    private func preparePictureInPicture() {
+        guard AVPictureInPictureController.isPictureInPictureSupported(), let player else { return }
+        pipLayer = AVPlayerLayer(player: player)
+        pipController = AVPictureInPictureController(playerLayer: pipLayer!)
+        pipController?.delegate = self
+    }
+
+    public func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        notifyStateUpdate()
+    }
+
+    public func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        notifyStateUpdate()
+    }
+}
+
+// MARK: - Remote Command Center
+
+extension DefaultPlayerEngine: RemoteCommandSupporting {
+    public func configureRemoteCommandsIfNeeded() {
+        guard remoteCommandsConfigured == false else { return }
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { await self?.play() }
+            return .success
+        }
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { await self?.pause() }
+            return .success
+        }
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            Task {
+                if self.state.isPlaying {
+                    await self.pause()
+                } else {
+                    await self.play()
+                }
+            }
+            return .success
+        }
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            Task { await self?.seek(to: event.positionTime) }
+            return .success
+        }
+        remoteCommandsConfigured = true
+        updateNowPlayingInfo()
+    }
+
+    public func teardownRemoteCommands() {
+        guard remoteCommandsConfigured else { return }
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.removeTarget(nil)
+        center.pauseCommand.removeTarget(nil)
+        center.togglePlayPauseCommand.removeTarget(nil)
+        center.changePlaybackPositionCommand.removeTarget(nil)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        remoteCommandsConfigured = false
+    }
+
+    @MainActor
+    private func updateNowPlayingInfo() {
+        guard remoteCommandsConfigured else { return }
+        var info: [String: Any] = [
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: state.currentTime,
+            MPMediaItemPropertyPlaybackDuration: state.duration,
+            MPNowPlayingInfoPropertyPlaybackRate: state.isPlaying ? playbackRate : 0
+        ]
+
+        if let title = currentItem?.title {
+            info[MPMediaItemPropertyTitle] = title
+        }
+        if let duration = currentItem?.runtime {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 }
 

@@ -2,6 +2,9 @@ import SwiftUI
 import Common
 import Player
 import Library
+#if canImport(AVKit)
+import AVKit
+#endif
 
 struct HomeView: View {
     let items: [MediaItem]
@@ -67,6 +70,7 @@ struct SettingsView: View {
 
 struct PlayerDetailView: View {
     @StateObject private var viewModel: PlayerDetailViewModel
+    @State private var gestureHint: String?
 
     init(item: MediaItem) {
         _viewModel = StateObject(wrappedValue: PlayerDetailViewModel(item: item))
@@ -74,15 +78,88 @@ struct PlayerDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            #if canImport(AVKit)
+            videoSurface
+            #endif
             header
             metadataSection
             playbackSection
+            gestureHints
             trackSelectors
+            subtitleStyleControls
+            controlExtras
             Spacer()
         }
         .padding()
         .navigationTitle(viewModel.item.title)
     }
+
+#if canImport(AVKit)
+    private var videoSurface: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                if let player = viewModel.avPlayer {
+                    VideoPlayer(player: player)
+                        .onAppear { viewModel.activateRemoteCommands() }
+                } else {
+                    Rectangle()
+                        .fill(.gray.opacity(0.2))
+                        .overlay { Text("加载播放器...") }
+                }
+            }
+            .frame(height: 240)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(alignment: .center) { gestureOverlay }
+
+            if viewModel.isPictureInPictureAvailable {
+                Button {
+                    viewModel.togglePictureInPicture()
+                } label: {
+                    Label(viewModel.isPictureInPictureActive ? "退出画中画" : "画中画", systemImage: "pip")
+                        .padding(8)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(8)
+            }
+        }
+    }
+
+    private var gestureOverlay: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        viewModel.jump(by: -10)
+                        gestureHint = "-10s"
+                    }
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        viewModel.jump(by: 10)
+                        gestureHint = "+10s"
+                    }
+            }
+            .overlay(alignment: .center) {
+                if let gestureHint {
+                    Text(gestureHint)
+                        .font(.headline.monospacedDigit())
+                        .padding(8)
+                        .background(.thinMaterial, in: Capsule())
+                        .transition(.opacity)
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        let scale = TimeInterval(value.translation.width / proxy.size.width) * 60
+                        viewModel.jump(by: scale)
+                        gestureHint = String(format: "%+.0fs", scale)
+                    }
+            )
+        }
+    }
+#endif
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -165,6 +242,16 @@ struct PlayerDetailView: View {
         }
     }
 
+    private var gestureHints: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("手势快捷")
+                .font(.headline)
+            Label("左右滑动快进/快退，双击左右区域跳转10秒。", systemImage: "hand.tap")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var trackSelectors: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !viewModel.item.audioTracks.isEmpty {
@@ -204,6 +291,66 @@ struct PlayerDetailView: View {
             }
         }
     }
+
+    private var subtitleStyleControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("字幕样式")
+                .font(.headline)
+            HStack {
+                Text("字号")
+                Slider(value: Binding(
+                    get: { viewModel.subtitleStyle.fontSize },
+                    set: { viewModel.updateSubtitleFontSize($0) }
+                ), in: 12...36, step: 1)
+                Text("\(Int(viewModel.subtitleStyle.fontSize))")
+                    .font(.caption.monospacedDigit())
+            }
+            HStack {
+                Text("描边")
+                Slider(value: Binding(
+                    get: { viewModel.subtitleStyle.outlineWidth },
+                    set: { viewModel.updateSubtitleOutline($0) }
+                ), in: 0...4, step: 0.5)
+                Text(String(format: "%.1f", viewModel.subtitleStyle.outlineWidth))
+                    .font(.caption.monospacedDigit())
+            }
+            HStack {
+                Text("背景透明度")
+                Slider(value: Binding(
+                    get: { viewModel.subtitleStyle.backgroundOpacity },
+                    set: { viewModel.updateSubtitleBackground($0) }
+                ), in: 0...1)
+                Text(String(format: "%.0f%%", viewModel.subtitleStyle.backgroundOpacity * 100))
+                    .font(.caption.monospacedDigit())
+            }
+            Picker("颜色", selection: Binding(
+                get: { viewModel.subtitleStyle.textColorHex },
+                set: { viewModel.updateSubtitleColor($0) }
+            )) {
+                ForEach(PlayerDetailViewModel.subtitleColorOptions, id: \.self) { hex in
+                    Label(hex, systemImage: "circle.fill")
+                        .foregroundStyle(Color(hex: hex))
+                        .tag(hex)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var controlExtras: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("播放扩展")
+                .font(.headline)
+            HStack {
+                Label(viewModel.remoteControlStatus, systemImage: "dot.radiowaves.left.and.right")
+                Spacer()
+                Button("刷新元数据缓存") {
+                    viewModel.refreshMetadata()
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
 }
 
 final class PlayerDetailViewModel: NSObject, ObservableObject {
@@ -213,11 +360,34 @@ final class PlayerDetailViewModel: NSObject, ObservableObject {
     @Published var isRefreshingMetadata = false
     @Published var cacheSnapshot: MetadataCacheSnapshot
     @Published var item: MediaItem
+    @Published var subtitleStyle: SubtitleStylePreferences = .init()
     let availableRates: [Float] = [0.75, 1.0, 1.25, 1.5, 2.0]
+    static let subtitleColorOptions: [String] = ["#FFFFFF", "#FFB703", "#00E0FF", "#F94144"]
 
     private let engine: PlayerEngine
     private let metadataService: MetadataServiceProtocol
     private var engineRate: Float = 1.0
+
+#if canImport(AVFoundation)
+    var avPlayer: AVPlayer? {
+        (engine as? AVPlayerBackedEngine)?.avPlayer
+    }
+
+    var isPictureInPictureAvailable: Bool {
+        engine is PictureInPictureSupporting
+    }
+
+    var isPictureInPictureActive: Bool {
+        (engine as? PictureInPictureSupporting)?.isPictureInPictureActive ?? false
+    }
+#endif
+
+    var remoteControlStatus: String {
+        if engine is RemoteCommandSupporting {
+            return "远程控制中心已激活"
+        }
+        return "远程控制中心不可用"
+    }
 
     init(item: MediaItem,
          engine: PlayerEngine = DefaultPlayerEngine(),
@@ -290,6 +460,39 @@ final class PlayerDetailViewModel: NSObject, ObservableObject {
         Task { await engine.selectSubtitle(subtitle) }
     }
 
+    func updateSubtitleFontSize(_ newValue: Double) {
+        subtitleStyle.fontSize = newValue
+    }
+
+    func updateSubtitleColor(_ newValue: String) {
+        subtitleStyle.textColorHex = newValue
+    }
+
+    func updateSubtitleOutline(_ newValue: Double) {
+        subtitleStyle.outlineWidth = newValue
+    }
+
+    func updateSubtitleBackground(_ newValue: Double) {
+        subtitleStyle.backgroundOpacity = newValue
+    }
+
+#if canImport(AVFoundation)
+    func togglePictureInPicture() {
+        guard let pipEngine = engine as? PictureInPictureSupporting else { return }
+        Task {
+            if pipEngine.isPictureInPictureActive {
+                await pipEngine.stopPictureInPicture()
+            } else {
+                await pipEngine.startPictureInPicture()
+            }
+        }
+    }
+
+    func activateRemoteCommands() {
+        (engine as? RemoteCommandSupporting)?.configureRemoteCommandsIfNeeded()
+    }
+#endif
+
     func refreshMetadata() {
         Task {
             await MainActor.run {
@@ -354,5 +557,25 @@ private extension MetadataCacheStatus {
         case .cached(_): return "已缓存"
         case .missing: return "未缓存"
         }
+    }
+}
+
+private extension Color {
+    init(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        var int: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch cleaned.count {
+        case 8:
+            (a, r, g, b) = (int >> 24, (int >> 16) & 0xff, (int >> 8) & 0xff, int & 0xff)
+        default:
+            (a, r, g, b) = (255, (int >> 16) & 0xff, (int >> 8) & 0xff, int & 0xff)
+        }
+        self.init(.sRGB,
+                  red: Double(r) / 255,
+                  green: Double(g) / 255,
+                  blue: Double(b) / 255,
+                  opacity: Double(a) / 255)
     }
 }

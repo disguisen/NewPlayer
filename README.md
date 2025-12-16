@@ -16,6 +16,7 @@
 - 播放详情页加入播放/暂停、快进/快退、倍速选择、音轨与字幕切换，并展示缓冲与时间轴。`DefaultPlayerEngine` 已对接 AVPlayer，实时推送播放与缓冲进度（在缺少 AVFoundation 时会回退到 FFmpegKit 或占位实现）。
 - 媒体库扫描支持本地文件夹与 SMB/WebDAV/FTP/UPnP 远程源（当前为模拟目录列表），并将扫描结果写入 SQLite（在沙盒不可用时回退内存）。
 - `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示；新增重试 + 回退策略和 UI 层的缓存状态展示与刷新入口。
+- SwiftUI 播放页补充了双击/滑动手势、画中画入口、远程控制中心激活提示，以及字幕字号/颜色/描边/背景透明度调节，便于快速验证真实播放时的交互体验。
 
 ## 元数据与图片缓存
 - **凭据配置**：在运行时设置环境变量 `TMDB_API_KEY`、`TVDB_TOKEN`，并可通过 `MetadataConfiguration.preferredProvider` 指定优先顺序（默认 TMDb→TVDb，若缺少凭据则自动跳过）。
@@ -30,8 +31,7 @@
   - 优先使用首选提供方（TMDb/TVDb），若失败则回退到次选提供方；全部失败时返回原始条目并在 UI 中提示错误。
 
 ## 下一步接入建议
-1. 在 SwiftUI 界面加入更多播放器控件、手势、画中画、远程控制中心以及字幕样式设置。
-2. 若使用自编译的 FFmpeg + VideoToolbox，可在 `DefaultPlayerEngine` 中扩展自定义管线，或直接把 `PlayerEngine` 的实例化切换为 `FFmpegPlayerEngine` 以使用 FFmpegKit 的格式覆盖。
+1. 若使用自编译的 FFmpeg + VideoToolbox，可在 `DefaultPlayerEngine` 中扩展自定义管线，或直接把 `PlayerEngine` 的实例化切换为 `FFmpegPlayerEngine` 以使用 FFmpegKit 的格式覆盖。
 
 ## 运行说明
 本仓库以 Swift Package 形式组织，可直接导入 Xcode 并设置 iOS 16+ 目标设备。`App/` 目录提供了 SwiftUI 入口样例，作为后续集成到 Xcode 工程或 `.xcodeproj` 的起点。
