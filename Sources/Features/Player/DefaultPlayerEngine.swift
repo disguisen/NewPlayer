@@ -137,25 +137,29 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
 
         statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] playerItem, _ in
             guard let self else { return }
-            switch playerItem.status {
-            case .readyToPlay:
-                let duration = CMTimeGetSeconds(playerItem.duration)
-                if duration.isFinite {
-                    state.duration = duration
+            Task { @MainActor in
+                switch playerItem.status {
+                case .readyToPlay:
+                    let duration = CMTimeGetSeconds(playerItem.duration)
+                    if duration.isFinite {
+                        self.state.duration = duration
+                    }
+                    self.updateBufferedTime()
+                    self.notifyStateUpdate()
+                case .failed:
+                    let playerError = (playerItem.error as? PlayerError) ?? .decodeFailed
+                    self.delegate?.playerDidFail(playerError)
+                default:
+                    break
                 }
-                updateBufferedTime()
-                notifyStateUpdate()
-            case .failed:
-                let playerError = (playerItem.error as? PlayerError) ?? .decodeFailed
-                delegate?.playerDidFail(playerError)
-            default:
-                break
             }
         }
 
         bufferObserver = item.observe(\.loadedTimeRanges, options: [.initial, .new]) { [weak self] _, _ in
             guard let self else { return }
-            updateBufferedTime()
+            Task { @MainActor in
+                self.updateBufferedTime()
+            }
         }
     }
 
