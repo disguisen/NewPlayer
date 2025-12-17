@@ -169,10 +169,12 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
         let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self else { return }
-            state.currentTime = CMTimeGetSeconds(time)
-            if state.isPlaying {
-                notifyStateUpdate()
-                updateNowPlayingInfo()
+            Task { @MainActor in
+                self.state.currentTime = CMTimeGetSeconds(time)
+                if self.state.isPlaying {
+                    self.notifyStateUpdate()
+                    self.updateNowPlayingInfo()
+                }
             }
         }
     }
@@ -185,9 +187,11 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            state.isPlaying = false
-            updateNowPlayingInfo()
-            notifyStateUpdate()
+            Task { @MainActor in
+                self.state.isPlaying = false
+                self.updateNowPlayingInfo()
+                self.notifyStateUpdate()
+            }
         }
     }
 
