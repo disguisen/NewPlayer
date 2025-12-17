@@ -1,45 +1,21 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Library
-import Player
-import Common
 
 @main
 struct NewPlayerApp: App {
-    @StateObject private var viewModel = AppViewModel()
-
     var body: some Scene {
         WindowGroup {
-            MainTabView()
-                .environmentObject(viewModel)
+            RootView()
         }
     }
 }
-
-final class AppViewModel: ObservableObject {
-    @Published var library: [MediaItem] = []
-    private let libraryService = LibraryService()
-
-    init() {
-        Task { await load() }
-    }
-
-    @MainActor
-    func load() async {
-        library = (try? await libraryService.loadLibrary()) ?? []
+#else
+// SwiftUI not available; placeholder main for non-Apple platforms.
+@main
+struct NewPlayerCLI {
+    static func main() {
+        print("NewPlayer app stubs are available for Apple platforms.")
     }
 }
-
-struct MainTabView: View {
-    @EnvironmentObject var viewModel: AppViewModel
-
-    var body: some View {
-        TabView {
-            HomeView(items: viewModel.library)
-                .tabItem { Label("首页", systemImage: "house.fill") }
-            LibraryView(items: viewModel.library)
-                .tabItem { Label("媒体库", systemImage: "film.fill") }
-            SettingsView()
-                .tabItem { Label("设置", systemImage: "gearshape") }
-        }
-    }
-}
+#endif

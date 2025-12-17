@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Fetch FFmpegKit iOS full shared build from GitHub releases and print the checksum
-# so it can be wired into Package.swift via the FFMPEG_KIT_BINARY_URL and
-# FFMPEG_KIT_CHECKSUM environment variables.
+RELEASE_URL=${1:-"https://github.com/tanersener/ffmpeg-kit/releases/download/v6.0-lts/ffmpeg-kit-ios-full-shared-6.0-lts.zip"}
+TMP_FILE="/tmp/ffmpeg-kit.zip"
 
-VERSION="6.0-lts"
-ARTIFACT="ffmpeg-kit-ios-full-shared-${VERSION}.zip"
-BASE_URL="https://github.com/tanersener/ffmpeg-kit/releases/download/v${VERSION}/${ARTIFACT}"
-DEST="${TMPDIR:-/tmp}/${ARTIFACT}"
-
-echo "Downloading ${BASE_URL} -> ${DEST}" >&2
-curl -L -o "${DEST}" "${BASE_URL}"
-
-echo "Computing checksum for ${DEST}" >&2
-swift package compute-checksum "${DEST}"
-
-echo "Use the values below to enable FFmpegKit in Package.swift:" >&2
-echo "FFMPEG_KIT_BINARY_URL=${BASE_URL}" >&2
+curl -L "$RELEASE_URL" -o "$TMP_FILE"
+checksum=$(shasum -a 256 "$TMP_FILE" | awk '{print $1}')
+echo "URL: $RELEASE_URL"
+echo "Checksum: $checksum"
