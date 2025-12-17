@@ -1,6 +1,7 @@
 import Foundation
 #if canImport(SQLite3)
 import SQLite3
+private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 #endif
 import Common
 
@@ -36,7 +37,7 @@ public final class SQLiteLibraryPersistence: LibraryPersisting {
         try perform {
             let query = "SELECT payload FROM media_items"
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
+            guard sqlite3_prepare_v2(self.db, query, -1, &statement, nil) == SQLITE_OK else {
                 throw PersistenceError.queryFailed
             }
             defer { sqlite3_finalize(statement) }
@@ -46,7 +47,7 @@ public final class SQLiteLibraryPersistence: LibraryPersisting {
                 guard let blobPointer = sqlite3_column_blob(statement, 0) else { continue }
                 let blobSize = sqlite3_column_bytes(statement, 0)
                 let data = Data(bytes: blobPointer, count: Int(blobSize))
-                if let item = try? decoder.decode(MediaItem.self, from: data) {
+                if let item = try? self.decoder.decode(MediaItem.self, from: data) {
                     items.append(item)
                 }
             }
@@ -58,13 +59,13 @@ public final class SQLiteLibraryPersistence: LibraryPersisting {
         try perform {
             let query = "INSERT OR REPLACE INTO media_items(id, payload, updated_at) VALUES(?,?,?)"
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
+            guard sqlite3_prepare_v2(self.db, query, -1, &statement, nil) == SQLITE_OK else {
                 throw PersistenceError.queryFailed
             }
             defer { sqlite3_finalize(statement) }
 
             for item in items {
-                let data = try encoder.encode(item)
+                let data = try self.encoder.encode(item)
                 sqlite3_bind_text(statement, 1, item.id.uuidString, -1, SQLITE_TRANSIENT)
                 data.withUnsafeBytes { bytes in
                     _ = sqlite3_bind_blob(statement, 2, bytes.baseAddress, Int32(data.count), SQLITE_TRANSIENT)
@@ -83,17 +84,17 @@ public final class SQLiteLibraryPersistence: LibraryPersisting {
         try perform {
             let query = "UPDATE media_items SET payload = ?, updated_at = ? WHERE id = ?"
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
+            guard sqlite3_prepare_v2(self.db, query, -1, &statement, nil) == SQLITE_OK else {
                 throw PersistenceError.queryFailed
             }
             defer { sqlite3_finalize(statement) }
 
-            let existingItems = try loadAll()
+            let existingItems = try self.loadAll()
             guard let updated = existingItems.first(where: { $0.id == itemID }) else { return }
             var edited = updated
             edited.lastPlaybackPosition = position
             edited.lastPlaybackDate = date
-            let data = try encoder.encode(edited)
+            let data = try self.encoder.encode(edited)
 
             data.withUnsafeBytes { bytes in
                 _ = sqlite3_bind_blob(statement, 1, bytes.baseAddress, Int32(data.count), SQLITE_TRANSIENT)
