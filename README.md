@@ -16,6 +16,7 @@
 - 媒体库扫描支持本地文件夹与 SMB/WebDAV/FTP/UPnP 远程源（当前为模拟目录列表），并将扫描结果写入 SQLite（在沙盒不可用时回退内存）。
 - `MetadataService` 串接 TMDb/TVDb API（通过 `TMDB_API_KEY`/`TVDB_TOKEN` 环境变量配置），并将海报/背景图下载到磁盘缓存，加速后续加载与离线显示；新增重试 + 回退策略和 UI 层的缓存状态展示与刷新入口。
 - 播放引擎：`DefaultPlayerEngine` 仍对接 AVPlayer 并推送播放/缓冲进度；App 层默认在 FFmpegKit 存在时改用 `FFmpegPlayerEngine` 以解锁更多格式，不存在时自动回退到 AVPlayer 或占位实现。
+- AVPlayer 回调统一在 `MainActor` 包裹播放/缓冲状态通知，消除 Swift 6 下的 actor 隔离警告，保障 UI 更新安全。
 - SwiftUI 播放页强化：
   - 播放/暂停、快进/快退、拖拽进度、倍速、音轨、字幕切换等基础控件。
   - 双击跳转、左右/上下滑动调节进度/亮度/音量，便于快速试用真实播放时的手势体验。
