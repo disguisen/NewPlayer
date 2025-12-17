@@ -215,8 +215,9 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
         guard let item = playerItem else { return }
         if let audioGroup = try? await item.asset.loadMediaSelectionGroup(for: .audible) {
             let option = audioGroup.options.first { option in
-                option.extendedLanguageTag == state.selectedAudio?.languageCode ||
-                option.locale?.language.identifier == state.selectedAudio?.languageCode
+                let localeCode = option.locale?.language.languageCode?.identifier
+                return option.extendedLanguageTag == state.selectedAudio?.languageCode ||
+                    localeCode == state.selectedAudio?.languageCode
             }
             if let option {
                 item.select(option, in: audioGroup)
@@ -226,8 +227,9 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
         if let subtitle = state.selectedSubtitle,
            let legible = try? await item.asset.loadMediaSelectionGroup(for: .legible) {
             let option = legible.options.first { option in
-                option.extendedLanguageTag == subtitle.languageCode ||
-                option.locale?.language.identifier == subtitle.languageCode
+                let localeCode = option.locale?.language.languageCode?.identifier
+                return option.extendedLanguageTag == subtitle.languageCode ||
+                    localeCode == subtitle.languageCode
             }
             if let option {
                 item.select(option, in: legible)
