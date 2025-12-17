@@ -129,7 +129,7 @@ public final class SQLiteLibraryPersistence: LibraryPersisting {
         return try result.get()
     }
 
-    private static func defaultURL() -> URL {
+    public static func defaultURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: "/tmp")
         return base.appendingPathComponent("NewPlayer/library.sqlite")
     }
