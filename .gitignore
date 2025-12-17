@@ -1,0 +1,11 @@
+.build/
+App/Resources/Assets.xcassets/AppIcon.appiconset/*.png
+DerivedData/
+.swiftpm/
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.app
+*.dSYM
+*.xcarchive
