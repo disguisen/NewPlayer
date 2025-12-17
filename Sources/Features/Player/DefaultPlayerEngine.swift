@@ -39,11 +39,13 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
             throw PlayerError.fileNotFound
         }
 
+        let asset = AVURLAsset(url: url)
+        let loadedDuration = try? await asset.load(.duration)
+        let playerItem = AVPlayerItem(asset: asset)
+
         await MainActor.run {
             self.cleanupPlayer()
             self.currentItem = item
-            let asset = AVURLAsset(url: url)
-            let playerItem = AVPlayerItem(asset: asset)
             self.playerItem = playerItem
             let player = AVPlayer(playerItem: playerItem)
             player.actionAtItemEnd = .pause
@@ -55,7 +57,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
             self.observePlaybackTime()
             self.observePlaybackEnd()
 
-            let initialDuration = item.runtime ?? CMTimeGetSeconds(playerItem.asset.duration)
+            let initialDuration = item.runtime ?? (loadedDuration.map { CMTimeGetSeconds($0) } ?? 0)
             self.state = PlaybackState(
                 isPlaying: false,
                 currentTime: item.lastPlaybackPosition,
@@ -64,10 +66,11 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
                 selectedAudio: item.audioTracks.first(where: { $0.isDefault }) ?? item.audioTracks.first,
                 selectedSubtitle: item.subtitles.first(where: { $0.isDefault }) ?? item.subtitles.first
             )
-            self.applyMediaSelections()
             self.updateNowPlayingInfo()
             self.notifyStateUpdate()
         }
+
+        await applyMediaSelections()
     }
 
     public var avPlayer: AVPlayer? { player }
@@ -116,17 +119,17 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
     public func selectAudioTrack(_ track: AudioTrack) async {
         await MainActor.run {
             state.selectedAudio = track
-            applyMediaSelections()
-            notifyStateUpdate()
         }
+        await applyMediaSelections()
+        await MainActor.run { notifyStateUpdate() }
     }
 
     public func selectSubtitle(_ subtitle: Subtitle?) async {
         await MainActor.run {
             state.selectedSubtitle = subtitle
-            applyMediaSelections()
-            notifyStateUpdate()
         }
+        await applyMediaSelections()
+        await MainActor.run { notifyStateUpdate() }
     }
 
     // MARK: - Observing
@@ -208,9 +211,9 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
     }
 
     @MainActor
-    private func applyMediaSelections() {
+    private func applyMediaSelections() async {
         guard let item = playerItem else { return }
-        if let audioGroup = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
+        if let audioGroup = try? await item.asset.loadMediaSelectionGroup(for: .audible) {
             let option = audioGroup.options.first { option in
                 option.extendedLanguageTag == state.selectedAudio?.languageCode ||
                 option.locale?.languageCode == state.selectedAudio?.languageCode
@@ -221,7 +224,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
         }
 
         if let subtitle = state.selectedSubtitle,
-           let legible = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+           let legible = try? await item.asset.loadMediaSelectionGroup(for: .legible) {
             let option = legible.options.first { option in
                 option.extendedLanguageTag == subtitle.languageCode ||
                 option.locale?.languageCode == subtitle.languageCode
@@ -229,7 +232,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
             if let option {
                 item.select(option, in: legible)
             }
-        } else if let legible = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+        } else if let legible = try? await item.asset.loadMediaSelectionGroup(for: .legible) {
             item.select(nil, in: legible)
         }
     }
