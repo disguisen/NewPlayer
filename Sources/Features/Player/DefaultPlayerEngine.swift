@@ -31,7 +31,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
     }
 
     deinit {
-        cleanupPlayer()
+        Task { await self.cleanupPlayer() }
     }
 
     public func load(item: MediaItem) async throws {
@@ -146,7 +146,8 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
                 updateBufferedTime()
                 notifyStateUpdate()
             case .failed:
-                delegate?.playerDidFail(playerItem.error ?? PlayerError.decodeFailed)
+                let playerError = (playerItem.error as? PlayerError) ?? .decodeFailed
+                delegate?.playerDidFail(playerError)
             default:
                 break
             }
@@ -204,7 +205,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
         if let audioGroup = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
             let option = audioGroup.options.first { option in
                 option.extendedLanguageTag == state.selectedAudio?.languageCode ||
-                option.locale?.languageCode?.identifier == state.selectedAudio?.languageCode
+                option.locale?.languageCode == state.selectedAudio?.languageCode
             }
             if let option {
                 item.select(option, in: audioGroup)
@@ -215,7 +216,7 @@ public final class DefaultPlayerEngine: NSObject, PlayerEngine, AVPlayerBackedEn
            let legible = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
             let option = legible.options.first { option in
                 option.extendedLanguageTag == subtitle.languageCode ||
-                option.locale?.languageCode?.identifier == subtitle.languageCode
+                option.locale?.languageCode == subtitle.languageCode
             }
             if let option {
                 item.select(option, in: legible)
@@ -281,17 +282,18 @@ extension DefaultPlayerEngine: AVPictureInPictureControllerDelegate, PictureInPi
     }
 
     public func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        notifyStateUpdate()
+        Task { await MainActor.run { self.notifyStateUpdate() } }
     }
 
     public func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        notifyStateUpdate()
+        Task { await MainActor.run { self.notifyStateUpdate() } }
     }
 }
 
 // MARK: - Remote Command Center
 
 extension DefaultPlayerEngine: RemoteCommandSupporting {
+    @MainActor
     public func configureRemoteCommandsIfNeeded() {
         guard remoteCommandsConfigured == false else { return }
         let commandCenter = MPRemoteCommandCenter.shared()
@@ -324,6 +326,7 @@ extension DefaultPlayerEngine: RemoteCommandSupporting {
         updateNowPlayingInfo()
     }
 
+    @MainActor
     public func teardownRemoteCommands() {
         guard remoteCommandsConfigured else { return }
         let center = MPRemoteCommandCenter.shared()
